@@ -1,149 +1,7 @@
+// src/App.js
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "./App.css";
-
-const SearchBar = ({
-  searchTerm,
-  handleSearch,
-  handleSearchSubmit,
-  suggestions,
-  handleSuggestionClick,
-}) => (
-  <div className="w-full p-4 bg-blue-600">
-    <input
-      type="text"
-      placeholder="Search Symptoms, Doctors, Specialities, Clinics"
-      value={searchTerm}
-      onChange={(e) => handleSearch(e.target.value)}
-      onKeyDown={handleSearchSubmit}
-      className="w-full p-2 rounded"
-      data-testid="autocomplete-input"
-    />
-    {suggestions.length > 0 && (
-      <ul className="absolute bg-white border rounded w-1/2 mt-1">
-        {suggestions.map((doctor, index) => (
-          <li
-            key={index}
-            className="p-2 hover:bg-gray-200 cursor-pointer"
-            onClick={() => handleSuggestionClick(doctor.name)}
-            data-testid="suggestion-item"
-          >
-            {doctor.name}
-          </li>
-        ))}
-      </ul>
-    )}
-  </div>
-);
-
-const FilterPanel = ({
-  sortBy,
-  handleSortChange,
-  consultationMode,
-  handleConsultationModeChange,
-  specialties,
-  handleSpecialtyChange,
-  allSpecialties,
-}) => (
-  <div className="w-1/4 p-4 bg-white shadow">
-    <div>
-      <h3 data-testid="filter-header-sort" className="font-bold">
-        Sort by
-      </h3>
-      <label>
-        <input
-          type="radio"
-          name="sort"
-          value="fees"
-          checked={sortBy === "fees"}
-          onChange={() => handleSortChange("fees")}
-          data-testid="sort-fees"
-        />
-        Price: Low-High
-      </label>
-      <label>
-        <input
-          type="radio"
-          name="sort"
-          value="experience"
-          checked={sortBy === "experience"}
-          onChange={() => handleSortChange("experience")}
-          data-testid="sort-experience"
-        />
-        Experience: Most Experience first
-      </label>
-    </div>
-
-    <div className="mt-4">
-      <h3 data-testid="filter-header-moc" className="font-bold">
-        Mode of Consultation
-      </h3>
-      <label>
-        <input
-          type="radio"
-          name="consultationMode"
-          value="video-consult"
-          checked={consultationMode === "video-consult"}
-          onChange={() => handleConsultationModeChange("video-consult")}
-          data-testid="filter-video-consult"
-        />
-        Video Consultation
-      </label>
-      <label>
-        <input
-          type="radio"
-          name="consultationMode"
-          value="in-clinic"
-          checked={consultationMode === "in-clinic"}
-          onChange={() => handleConsultationModeChange("in-clinic")}
-          data-testid="filter-in-clinic"
-        />
-        In-clinic Consultation
-      </label>
-    </div>
-
-    <div className="mt-4">
-      <h3 data-testid="filter-header-speciality" className="font-bold">
-        Specialities
-      </h3>
-      {allSpecialties.map((specialty) => (
-        <label key={specialty}>
-          <input
-            type="checkbox"
-            checked={specialties.includes(specialty)}
-            onChange={() => handleSpecialtyChange(specialty)}
-            data-testid={`filter-specialty-${specialty.replace(/\//g, "-")}`}
-          />
-          {specialty}
-        </label>
-      ))}
-    </div>
-  </div>
-);
-
-const DoctorCard = ({ doctor }) => (
-  <div
-    className="p-4 mb-4 bg-white shadow rounded flex justify-between items-center"
-    data-testid="doctor-card"
-  >
-    <div>
-      <h3 data-testid="doctor-name" className="font-bold">
-        {doctor.name}
-      </h3>
-      <p data-testid="doctor-specialty">{doctor.specialties.join(", ")}</p>
-      <p data-testid="doctor-experience">{doctor.yearsOfExperience} yrs exp.</p>
-      <p>
-        {doctor.clinicName}, {doctor.city}
-      </p>
-    </div>
-    <div>
-      <p data-testid="doctor-fee">₹{doctor.consultationFee}</p>
-      <button className="bg-blue-500 text-white px-4 py-2 rounded">
-        Book Appointment
-      </button>
-    </div>
-  </div>
-);
 
 const App = () => {
   const [doctors, setDoctors] = useState([]);
@@ -153,8 +11,10 @@ const App = () => {
   const [consultationMode, setConsultationMode] = useState("");
   const [specialties, setSpecialties] = useState([]);
   const [sortBy, setSortBy] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setIsLoading(true);
     axios
       .get("https://srijandubey.github.io/campus-api-mock/SRM-C1-25.json")
       .then((response) => {
@@ -166,12 +26,18 @@ const App = () => {
           ? params.get("specialties").split(",")
           : [];
         const sort = params.get("sortBy") || "";
+        const search = params.get("search") || "";
         setConsultationMode(mode);
         setSpecialties(specs);
         setSortBy(sort);
-        applyFilters(response.data, mode, specs, sort, searchTerm);
+        setSearchTerm(search);
+        applyFilters(response.data, mode, specs, sort, search);
+        setIsLoading(false);
       })
-      .catch((error) => console.error("Error fetching doctors:", error));
+      .catch((error) => {
+        console.error("Error fetching doctors:", error);
+        setIsLoading(false);
+      });
 
     window.addEventListener("popstate", () => {
       const params = new URLSearchParams(window.location.search);
@@ -200,21 +66,28 @@ const App = () => {
 
     if (mode) {
       filtered = filtered.filter((doctor) =>
-        mode === "video-consult" ? doctor.videoConsultAvailable : true
+        mode === "video-consult" ? doctor.video_consult : doctor.in_clinic
       );
     }
 
     if (specs.length > 0) {
       filtered = filtered.filter((doctor) =>
-        specs.some((spec) => doctor.specialties.includes(spec))
+        specs.every((spec) => doctor.specialities.some((s) => s.name === spec))
       );
     }
 
     if (sort) {
       filtered.sort((a, b) => {
-        if (sort === "fees") return a.consultationFee - b.consultationFee;
-        if (sort === "experience")
-          return b.yearsOfExperience - a.yearsOfExperience;
+        if (sort === "fees") {
+          const feeA = parseInt(a.fees.replace("₹ ", ""));
+          const feeB = parseInt(b.fees.replace("₹ ", ""));
+          return feeA - feeB;
+        }
+        if (sort === "experience") {
+          const expA = parseInt(a.experience.split(" ")[0]);
+          const expB = parseInt(b.experience.split(" ")[0]);
+          return expB - expA;
+        }
         return 0;
       });
     }
@@ -284,33 +157,205 @@ const App = () => {
   };
 
   const allSpecialties = [
-    ...new Set(doctors.flatMap((doctor) => doctor.specialties)),
+    ...new Set(
+      doctors.flatMap((doctor) => doctor.specialities.map((s) => s.name))
+    ),
   ];
 
   return (
-    <div className="flex flex-col min-h-screen bg-gray-100">
-      <SearchBar
-        searchTerm={searchTerm}
-        handleSearch={handleSearch}
-        handleSearchSubmit={handleSearchSubmit}
-        suggestions={suggestions}
-        handleSuggestionClick={handleSuggestionClick}
-      />
-      <div className="flex flex-1">
-        <FilterPanel
-          sortBy={sortBy}
-          handleSortChange={handleSortChange}
-          consultationMode={consultationMode}
-          handleConsultationModeChange={handleConsultationModeChange}
-          specialties={specialties}
-          handleSpecialtyChange={handleSpecialtyChange}
-          allSpecialties={allSpecialties}
-        />
-        <div className="w-3/4 p-4">
-          {filteredDoctors.map((doctor) => (
-            <DoctorCard key={doctor.name} doctor={doctor} />
-          ))}
+    <div className="flex flex-col min-h-screen">
+      <header className="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-6 shadow-lg">
+        <h1 className="text-3xl font-bold mb-4">Find a Doctor</h1>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Search Symptoms, Doctors, Specialities, Clinics"
+            value={searchTerm}
+            onChange={(e) => handleSearch(e.target.value)}
+            onKeyDown={handleSearchSubmit}
+            className="w-full p-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400 transition duration-300"
+            data-testid="autocomplete-input"
+          />
+          {suggestions.length > 0 && (
+            <ul className="absolute z-10 w-full bg-white border border-gray-200 rounded-lg mt-1 shadow-lg animate-fade-in">
+              {suggestions.map((doctor, index) => (
+                <li
+                  key={index}
+                  className="p-3 hover:bg-blue-50 cursor-pointer text-gray-800"
+                  onClick={() => {
+                    const li = document.getElementById(`suggestion-${index}`);
+                    li.classList.add("animate-slide-up");
+                    setTimeout(() => handleSuggestionClick(doctor.name), 300);
+                  }}
+                  data-testid="suggestion-item"
+                  id={`suggestion-${index}`}
+                >
+                  {doctor.name}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
+      </header>
+
+      <div className="flex flex-1 p-6">
+        <aside className="w-1/4 bg-white p-6 rounded-lg shadow-md mr-6">
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">Filters</h2>
+          <div className="mb-6">
+            <h3
+              data-testid="filter-header-sort"
+              className="text-lg font-medium mb-2"
+            >
+              Sort by
+            </h3>
+            <label className="block mb-2">
+              <input
+                type="radio"
+                name="sort"
+                value="fees"
+                checked={sortBy === "fees"}
+                onChange={() => handleSortChange("fees")}
+                className="mr-2"
+                data-testid="sort-fees"
+              />
+              Price: Low-High
+            </label>
+            <label className="block">
+              <input
+                type="radio"
+                name="sort"
+                value="experience"
+                checked={sortBy === "experience"}
+                onChange={() => handleSortChange("experience")}
+                className="mr-2"
+                data-testid="sort-experience"
+              />
+              Experience: Most Experience first
+            </label>
+          </div>
+
+          <div className="mb-6">
+            <h3
+              data-testid="filter-header-moc"
+              className="text-lg font-medium mb-2"
+            >
+              Mode of Consultation
+            </h3>
+            <label className="block mb-2">
+              <input
+                type="radio"
+                name="consultationMode"
+                value="video-consult"
+                checked={consultationMode === "video-consult"}
+                onChange={() => handleConsultationModeChange("video-consult")}
+                className="mr-2"
+                data-testid="filter-video-consult"
+              />
+              Video Consultation
+            </label>
+            <label className="block">
+              <input
+                type="radio"
+                name="consultationMode"
+                value="in-clinic"
+                checked={consultationMode === "in-clinic"}
+                onChange={() => handleConsultationModeChange("in-clinic")}
+                className="mr-2"
+                data-testid="filter-in-clinic"
+              />
+              In-clinic Consultation
+            </label>
+          </div>
+
+          <div>
+            <h3
+              data-testid="filter-header-speciality"
+              className="text-lg font-medium mb-2"
+            >
+              Specialities
+            </h3>
+            {allSpecialties.map((specialty) => (
+              <label key={specialty} className="block mb-2">
+                <input
+                  type="checkbox"
+                  checked={specialties.includes(specialty)}
+                  onChange={() => handleSpecialtyChange(specialty)}
+                  className="mr-2"
+                  data-testid={`filter-specialty-${specialty.replace(
+                    /\//g,
+                    "-"
+                  )}`}
+                />
+                {specialty}
+              </label>
+            ))}
+          </div>
+        </aside>
+
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64 w-3/4">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : (
+          <main className="w-3/4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredDoctors.map((doctor) => (
+                <div
+                  key={doctor.id}
+                  className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg hover:scale-105 transition duration-300"
+                  data-testid="doctor-card"
+                >
+                  <div className="flex items-center mb-4">
+                    <img
+                      src={doctor.photo || "https://via.placeholder.com/64"}
+                      alt={doctor.name}
+                      className="w-16 h-16 rounded-full object-cover mr-4"
+                    />
+                    <div>
+                      <h3
+                        data-testid="doctor-name"
+                        className="text-xl font-semibold text-gray-800"
+                      >
+                        {doctor.name}
+                      </h3>
+                      <p
+                        data-testid="doctor-specialty"
+                        className="text-gray-600"
+                      >
+                        {doctor.specialities.map((s) => s.name).join(", ")}
+                      </p>
+                    </div>
+                  </div>
+                  <p
+                    data-testid="doctor-experience"
+                    className="text-gray-600 mb-2"
+                  >
+                    {parseInt(doctor.experience.split(" ")[0])} yrs exp.
+                  </p>
+                  <p className="text-gray-500 mb-4">
+                    {doctor.clinic.name}, {doctor.clinic.address.city}
+                  </p>
+                  <div className="flex justify-between items-center">
+                    <p
+                      data-testid="doctor-fee"
+                      className="text-lg font-medium text-green-600"
+                    >
+                      {doctor.fees}
+                    </p>
+                    <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-200">
+                      Book Appointment
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {filteredDoctors.length === 0 && (
+              <p className="text-gray-600 mt-6">
+                No doctors found matching your criteria.
+              </p>
+            )}
+          </main>
+        )}
       </div>
     </div>
   );
